@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -113,10 +113,10 @@ namespace word_count
 
     public class modes
     {
-        public string path;
-        public int phrase_number;
+        public string path="";
+        public int phrase_number=2;
         public bool count_topk = false;
-        public int top_number;
+        public int top_number=-1;
         public bool count_char = false;
         public bool count_word = false;
         public bool count_phrase = false;
@@ -125,7 +125,7 @@ namespace word_count
         public bool stopword = false;
         public string stopword_path;
         public bool verb_origin = false;
-        public string verb_path;
+        public string verb_path="";
 
         public modes(string[] args)
         {
@@ -208,19 +208,55 @@ namespace word_count
 
     class Program
     {
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
-            modes mode = new modes(args);
-            string testfile = "D:/ASE/word count/test_file/pride-and-prejudice.txt";
-            string verbfile = "D:/ASE/word count/src_file/verbs_origin.txt";
-            string prepfile = "D:/ASE/word count/src_file/prepositions.txt";
-            print_dictionary<char>(count_char(testfile));
-            print_dictionary<string>(count_word(testfile));
-            print_dictionary<string>(count_phrase(testfile, verbfile, prepfile));
-            return;
+            //string testfile = "D:/ASE/word_count/test_file/pride-and-prejudice.txt";
+            string verbfile = "D:/ASE/word_count/src_file/verbs_origin.txt";
+            string prepfile = "D:/ASE/word_count/src_file/prepositions.txt";
+            try
+            {
+                modes mode = new modes(args);
+                string[] files;
+
+                if (mode.directory && mode.recurrent)
+                    files = Directory.GetFiles(mode.path, "*.*", SearchOption.AllDirectories);
+                else if (mode.directory)
+                    files = Directory.GetFiles(mode.path);
+                else
+                    files = new string[] { mode.path };
+
+                foreach(string file in files)
+                {
+                    process_onefile(mode, file, verbfile, prepfile);
+                }
+
+                return 0;
+            }
+            catch (ArgumentException e) when (e.Message == "Parameter error! ")
+            {
+                return -1;
+            }
         }
 
-        static Dictionary<char, float> count_char(string infile)
+        static int process_onefile(modes mode, string file, string verbfile, string prepfile)
+        {
+            int num = mode.top_number;
+            if (mode.count_char)
+            {
+                print_dictionary<char>(count_char(mode, file), num);
+            }
+            if (mode.count_word)
+            {
+                print_dictionary<string>(count_word(mode, file), num);
+            }
+            if (mode.count_phrase)
+            {
+                print_dictionary<string>(count_phrase(mode, file, verbfile, prepfile), num);
+            }
+            return 0;
+        }
+
+        static Dictionary<char, float> count_char(modes mode, string infile)
         {
             Dictionary<char, float> char_freq = new Dictionary<char, float>();
             for(char c='a';c<='z';c++)
@@ -232,7 +268,6 @@ namespace word_count
                 char_freq[c] = 0;
             }
             StreamReader sr = new StreamReader(infile);
-            float sum = 0;
             int read_size = 500;
             char[] buffer = new char[read_size];
             while (!sr.EndOfStream)
@@ -248,30 +283,22 @@ namespace word_count
                 }
             }
             sr.Close();
-            foreach(char c in char_freq.Keys)
-            {
-                sum += char_freq[c];
-            }
-            List<char> keys = new List<char>(char_freq.Keys);
-            foreach (char c in keys)
-            {
-                char_freq[c] /= sum;
-            }
+            num2freq<char>(char_freq);
             return char_freq;
         }
 
-        static Dictionary<string, float> count_word(string infile)
+        static Dictionary<string, float> count_word(modes mode, string infile)
         {
             Dictionary<string, float> word_freq = new Dictionary<string, float>();
             StreamReader sr = new StreamReader(infile);
-            float sum = 0;
             while (!sr.EndOfStream)
             {
-                //TODO: overflow
+                //TODO: line overflow
                 string line = sr.ReadLine().Trim().ToLower();
                 string[] words = line.Split(new char[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                 foreach (string word in words)
                 {
+                    //TODO: optimize pipeline
                     if (!(word[0] > 'a' && word[0] < 'z') && !(word[0] > 'A' && word[0] < 'Z'))
                         continue;
                     if (!word_freq.ContainsKey(word))
@@ -280,25 +307,28 @@ namespace word_count
                 }
             }
             sr.Close();
-            foreach (string word in word_freq.Keys)
-            {
-                sum += word_freq[word];
-            }
-            List<string> keys = new List<string>(word_freq.Keys);
-            foreach (string word in keys)
-            {
-                word_freq[word] /= sum;
-            }
+            num2freq<string>(word_freq);
+            if (mode.stopword)
+                word_freq = remove_stopwords(word_freq, mode.stopword_path);
             return word_freq;
         }
 
-        static Dictionary<string, float> count_phrase(string infile, string verb_file, string prep_file)
+        static Dictionary<string, float> remove_stopwords(Dictionary<string, float> dict, string stopword_path)
+        {
+            string[] stopwords = File.ReadAllLines(stopword_path);
+            foreach(string word in stopwords)
+            {
+                dict.Remove(word);
+            }
+            return dict;
+        }
+
+        static Dictionary<string, float> count_phrase(modes mode, string infile, string verb_file, string prep_file)
         {
             string[] verbs = File.ReadAllLines(verb_file);
             string[] preps = File.ReadAllLines(prep_file);
             Dictionary<string, float> phrase_freq = new Dictionary<string, float>();
             StreamReader sr = new StreamReader(infile);
-            float sum = 0;
             string line_last_word = "";
             while (!sr.EndOfStream)
             {
@@ -333,24 +363,35 @@ namespace word_count
                 line_last_word = words[last_index];
             }
             sr.Close();
-            foreach (string phrase in phrase_freq.Keys)
-            {
-                sum += phrase_freq[phrase];
-            }
-            List<string> keys = new List<string>(phrase_freq.Keys);
-            foreach (string phrase in keys)
-            {
-                phrase_freq[phrase] /= sum;
-            }
+            num2freq<string>(phrase_freq);
             return phrase_freq;
         }
 
-        static void print_dictionary<T>(Dictionary<T, float> dict)
+        static Dictionary<T, float> num2freq<T>(Dictionary<T, float> dict)
         {
+            float sum = 0;
+            foreach (T phrase in dict.Keys)
+            {
+                sum += dict[phrase];
+            }
+            List<T> keys = new List<T>(dict.Keys);
+            foreach (T phrase in keys)
+            {
+                dict[phrase] /= sum;
+            }
+            return dict;
+        }
+
+        static void print_dictionary<T>(Dictionary<T, float> dict, int num)
+        {
+            int cnt = 0;
             foreach(T c in dict.Keys.OrderBy(o => o).OrderByDescending(o=>dict[o]))
             {
                 Console.Write(c);
                 Console.Write('\t' + dict[c].ToString() + '\n');
+                cnt++;
+                if (cnt == num)
+                    break;
             }
             return;
         }
