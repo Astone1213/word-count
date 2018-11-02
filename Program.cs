@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace word_count
 {
@@ -305,7 +306,7 @@ namespace word_count
 
     class Program
     {
-        public static char[] SPACES = new char[] {'”','"', '”', ' ', '\t', '\r', '\n' };
+        public static char[] SPACES = new char[] {' ', '\t', '\r', '\n' };
         public static char[] SPLITOR;
         public static char[] PHRASE_SPLITOR;
 
@@ -315,8 +316,8 @@ namespace word_count
             //string verbfile = "D:/ASE/word_count/src_file/verbs_all.txt";
             //string prepfile = "D:/ASE/word_count/src_file/prepositions.txt";
             
-            try
-            {
+            //try
+            //{
                 modes mode = new modes(args);
                 string[] files;
 
@@ -329,41 +330,19 @@ namespace word_count
 
                 List<char> temp_splitor = new List<char>();
                 List<char> temp = new List<char>();
-                //for (int i = 0; i < 128; i++)
-                //{
-                //    char c = (char)i;
-                //    if (!(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9'))
-                //    {
-                //        temp_splitor.Add(c);
-                //        if (!SPACES.Contains(c))
-                //            temp.Add(c);
-                //    }
-                //}
-                //for (char c = '\u0000'; c <= '\uffff'; c++)
-                //{
-                //    if (!(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9'))
-                //    {
-                //        temp_splitor.Add(c);
-                //        if (!SPACES.Contains(c))
-                //            temp.Add(c);
-                //    }
-                //}
-                //SPLITOR = temp_splitor.ToArray();
-                //PHRASE_SPLITOR = temp.ToArray();
-
 
                 foreach (string file in files)
                 {
                     process_onefile(mode, file);
                 }
 
-                return 0;
-            }
-            catch (ArgumentException e)
-            {
-                Console.WriteLine(e.Message);
-                return -1;
-            }
+                 return 0;
+            //}
+            //catch (ArgumentException e)
+            //{
+            //    Console.WriteLine(e.Message);
+            //    return -1;
+            //}
         }
 
         static void process_onefile(modes mode, string file)
@@ -393,8 +372,8 @@ namespace word_count
 
         static void find_splitor(string infile)
         {
-            List<char> splitors = new List<char>();
-            List<char> phrase_plitors = new List<char>();
+            HashSet<char> splitors = new HashSet<char>();
+            HashSet<char> phrase_splitors = new HashSet<char>();
             StreamReader sr = new StreamReader(infile);
             int read_size = 1000;
             char[] buffer = new char[read_size];
@@ -410,39 +389,46 @@ namespace word_count
                     if (splitors.Contains(c))
                         continue;
                     splitors.Add(c);
-                    if(!SPACES.Contains(c))
-                        phrase_plitors.Add(c);
+                    if (!SPACES.Contains(c))
+                        phrase_splitors.Add(c);
                 }
                 SPLITOR = splitors.ToArray();
-                PHRASE_SPLITOR = phrase_plitors.ToArray();
+                PHRASE_SPLITOR = phrase_splitors.ToArray();
             }
         }
 
         static Dictionary<char, int> count_char(modes mode, string infile)
         {
             Dictionary<char, int> char_freq = new Dictionary<char, int>();
-            for(char c='a';c<='z';c++)
+            for (char c='a';c<='z';c++)
             {
                 char_freq[c] = 0;
             }
-            for (char c = 'Z'; c >= 'A'; c--)
+            for (char c = 'A'; c <= 'Z'; c++)
             {
                 char_freq[c] = 0;
             }
             StreamReader sr = new StreamReader(infile);
-            int read_size = 500;
+            int read_size = 1000;
             char[] buffer = new char[read_size];
             while (!sr.EndOfStream)
             {
-                sr.Read(buffer, 0, read_size);
+                int num = sr.Read(buffer, 0, read_size);
                 //for (int i = 0; i < 1000; i++)
                 //    buffer[i] = char(sr.Read());
-                foreach (char c in buffer)
+                for(int i=0; i<num; i++)
                 {
+                    char c = buffer[i];
                     if (!char_freq.ContainsKey(c))
                         continue;
                     char_freq[c]++;
                 }
+            }
+            for(char c='A'; c<='Z'; c++)
+            {
+                char tmp = c.ToString().ToLower()[0];
+                char_freq[tmp] += char_freq[c];
+                char_freq.Remove(c);
             }
             sr.Close();
             //num2freq<char>(char_freq);
@@ -461,7 +447,8 @@ namespace word_count
                 foreach (string word in words)
                 {
                     //TODO: optimize pipeline (1)judge a-z (2)contains (3)verb origin
-                    if (!(word[0] > 'a' && word[0] < 'z') && !(word[0] > 'A' && word[0] < 'Z'))
+                    char c = word[0];
+                    if (!(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z'))
                         continue;
                     if (!word_freq.ContainsKey(word))
                         word_freq[word] = 0;
@@ -576,6 +563,12 @@ namespace word_count
         static Dictionary<string, int> count_phrase(modes mode, string infile)
         {
             Dictionary<string, int> phrase_freq = new Dictionary<string, int>();
+            Dictionary<string, string> verb_map = new Dictionary<string, string>();
+            if(mode.verb_origin)
+                verb_map = gen_verb_map(mode.verb_path);
+            HashSet<string> stopwords = new HashSet<string>();
+            if (mode.stopword)
+                stopwords = gen_wordlist(mode.stopword_path);
             int len = mode.phrase_number;
             StreamReader sr = new StreamReader(infile);
             string line_last_words = "";
@@ -588,58 +581,88 @@ namespace word_count
                     string line = sr.ReadLine().Trim().ToLower();
                     buffer = string.Join(" ", buffer, line);
                 }
-                string[] sentences = buffer.Split(PHRASE_SPLITOR, StringSplitOptions.RemoveEmptyEntries);
-                if (sentences.Count() < len)
-                {
-                    buffer_size *= 2;
-                    line_last_words = buffer;
-                    continue;
-                }
-                
-                string[] words = new string[] { };
+                string[] sentences = buffer.Split(PHRASE_SPLITOR, StringSplitOptions.None);
+                //string[] words = new string[] { };
+                List<string> words = new List<string>();
                 foreach (string sentence in sentences)
                 {
-                    words = sentence.Split(SPACES, StringSplitOptions.RemoveEmptyEntries);
-                    int last_index = words.Count() - len + 1;
+                    words = new List<string>(sentence.Split(SPACES, StringSplitOptions.RemoveEmptyEntries));
+                    int last_index = words.Count();
+                    for (int i=0; i<last_index;)
+                    {
+                        string word = words[i];
+                        char c = word[0];
+                       
+                        if (c >= '0' && c <= '9')
+                        {
+                            words.Remove(word);
+                            last_index -= 1;
+                            continue;
+                        }
+                        if (mode.stopword)
+                        {
+                            if (stopwords.Contains(word))
+                            {
+                                words.Remove(word);
+                                last_index -= 1;
+                                continue;
+                            }
+                        }
+                        if (mode.verb_origin)
+                        {
+                            if (verb_map.ContainsKey(word))
+                                words[i] = verb_map[word];
+                        }
+                        i++;
+                    }
+                    int tmp = words.Count();
+                    if (tmp < len)
+                    {
+                        continue;
+                    }
+                    last_index = tmp - len + 1;
                     for (int i = 0; i < last_index; i++)
                     {
                         string phrase = "";
                         int max = i + len;
                         for (int j = i; j < max; j++)
-                            phrase = string.Join(" ", phrase, words[j]);
+                            phrase = string.Join(" ", phrase, words[j]).Trim();
                         if (!phrase_freq.ContainsKey(phrase))
                             phrase_freq[phrase] = 0;
                         phrase_freq[phrase] += 1;
+                        //if (phrase.Contains("sight"))
+                        //    Console.WriteLine();
                     }
                     
                 }
                 line_last_words = "";
-                if (words.Count() <= len)
+                if (words.Count() < len)
                 {
                     line_last_words = sentences.Last();
                 }
                 else
                 {
-                    words = words.Skip(words.Count() - len).ToArray();
+                    words.RemoveRange(0, words.Count() - len + 1);
+                    //words = words.Skip(words.Count() - len).ToArray();
                     line_last_words = string.Join(" ", words);
                 }
             }
             sr.Close();
             //num2freq<string>(phrase_freq);
-            if (mode.verb_origin)
-                phrase_freq = verb2origin(phrase_freq, mode.verb_path, 2);
+            //if (mode.verb_origin)
+            //    phrase_freq = verb2origin(phrase_freq, mode.verb_path, 2);
             return phrase_freq;
         }
 
         static Dictionary<string, int> count_verbprep_phrase(modes mode, string infile)
         {
             string verb_file = mode.verb_path;
-            //List<string> verbs = process_verb_file(verb_file);
-            VocabTree verb_tree = gen_verb_tree(verb_file);
+            Dictionary<string, string> verb_map = gen_verb_map(verb_file);
+            HashSet<string> stopwords = new HashSet<string>();
+            if (mode.stopword)
+                stopwords = gen_wordlist(mode.stopword_path);
             string prep_file = mode.prep_path;
-            VocabTree prep_tree = gen_vocab_tree(prep_file);
-            //if (preps.Count() > 500)
-            //    preps = gen_vocab_tree(prep_file);
+            HashSet<string> preps = gen_wordlist(prep_file);
             Dictionary<string, int> phrase_freq = new Dictionary<string, int>();
             StreamReader sr = new StreamReader(infile);
             string line_last_word = "";
@@ -647,37 +670,80 @@ namespace word_count
             while (!sr.EndOfStream)
             {
                 string buffer = line_last_word;
+                int cnt = 0;
                 while (!sr.EndOfStream && buffer.Count() < buffer_size)
                 {
+                    cnt++;
                     string line = sr.ReadLine().Trim().ToLower();
                     buffer = string.Join(" ", buffer, line);
                 }
-                string[] words = buffer.Split(SPACES, StringSplitOptions.RemoveEmptyEntries);
-                if (words.Count() < 1)
+                string[] sentences = buffer.Split(PHRASE_SPLITOR, StringSplitOptions.None);
+
+
+                List<string> words = new List<string>();
+                int last_index;
+                foreach (string sentence in sentences)
                 {
-                    buffer_size *= 2;
-                    line_last_word = buffer;
-                    continue;
-                }
-                int last_index = words.Count() - 1;
-                for (int i=0 ; i< last_index; i++)
-                {
-                    string first_word = words[i];
-                    string second_word = words[i + 1];
-                    if (!prep_tree.Contains(second_word))
+                    words = new List<string>(sentence.Split(SPACES, StringSplitOptions.RemoveEmptyEntries));
+                    last_index = words.Count(); 
+                    for (int i = 0; i < last_index;)
+                    {
+                        string word = words[i];
+                        char c = word[0];
+                        if (c >= '0' && c <= '9')
+                        {
+                            words.Remove(word);
+                            last_index -= 1;
+                            continue;
+                        }
+                        if (mode.stopword)
+                        {
+                            if (stopwords.Contains(word))
+                            {
+                                words.Remove(word);
+                                last_index -= 1;
+                                continue;
+                            }
+                        }
+                        if (mode.verb_origin)
+                        {
+                            if (verb_map.ContainsKey(word))
+                                words[i] = verb_map[word];
+                        }
+                        i++;
+                    }
+                    int tmp = words.Count();
+                    if (tmp < 2)
+                    {
                         continue;
-                    if(!verb_tree.Contains(first_word))
-                        continue;
-                    if (mode.verb_origin)
-                        first_word = verb_tree.verb_map(first_word);
-                    //Console.WriteLine(first_word);
-                    string key = string.Join(" ", first_word, second_word);
-                    if (!phrase_freq.ContainsKey(key))
-                        phrase_freq[key] = 0;
-                    phrase_freq[key] += 1;
-                    i++;
+                    }
+                    last_index = tmp - 1;
+                    for (int i = 0; i < last_index; i++)
+                    {
+                        string first_word = words[i];
+                        string second_word = words[i + 1];
+                        if (!preps.Contains(second_word))
+                            continue;
+                        if (!verb_map.ContainsKey(first_word))
+                            continue;
+
+                        if (mode.verb_origin)
+                            first_word = verb_map[first_word];
+                        //Console.WriteLine(first_word);
+                        string key = string.Join(" ", first_word, second_word);
+                        if (!phrase_freq.ContainsKey(key))
+                            phrase_freq[key] = 0;
+                        phrase_freq[key] += 1;
+                        //if (key.Contains("sight with"))
+                        //    Console.WriteLine();
+                        //i++;
+                    }
                 }
-                line_last_word = words[last_index];
+                last_index = words.Count() - 1;
+                if (last_index >= 0)
+                    line_last_word = words[last_index];
+                else
+                    line_last_word = "";
             }
             sr.Close();
             //num2freq<string>(phrase_freq);
@@ -738,6 +804,46 @@ namespace word_count
             }
             sr.Close();
             return tree;
+        }
+
+        static Dictionary<string, string> gen_verb_map(string infile)
+        {
+            Dictionary<string, string> verb_map = new Dictionary<string, string>();
+            StreamReader sr = new StreamReader(infile);
+            while (!sr.EndOfStream)
+            {
+                string line = sr.ReadLine();
+                string[] words = line.Split(new string[] { " -> " }, StringSplitOptions.None);
+                string verb_origin = words[0].Trim();
+                string[] verbs = words[1].Split(',');
+                verb_map[verb_origin] = verb_origin;
+                foreach (string verb in verbs)
+                {
+                    verb_map[verb.Trim()] = verb_origin;
+                }
+            }
+            sr.Close();
+            return verb_map;
+        }
+
+        static Dictionary<string, string> gen_prep_map(string infile)
+        {
+            Dictionary<string, string> prep_map = new Dictionary<string, string>();
+            string text = File.ReadAllText(infile);
+            string[] words = text.Split(SPACES);
+            foreach (string word in words)
+                prep_map[word] = word;
+            return prep_map;
+        }
+
+        static HashSet<string> gen_wordlist(string infile)
+        {
+            HashSet<string> wordlist = new HashSet<string>();
+            string text = File.ReadAllText(infile);
+            string[] words = text.Split(SPACES);
+            foreach (string word in words)
+                wordlist.Add(word);
+            return wordlist;
         }
 
         static VocabTree gen_vocab_tree(string infile)
