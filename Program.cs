@@ -315,9 +315,9 @@ namespace word_count
             //string testfile = "D:/ASE/word_count/test_file/pride-and-prejudice.txt";
             //string verbfile = "D:/ASE/word_count/src_file/verbs_all.txt";
             //string prepfile = "D:/ASE/word_count/src_file/prepositions.txt";
-            
-            //try
-            //{
+
+            try
+            {
                 modes mode = new modes(args);
                 string[] files;
 
@@ -328,22 +328,19 @@ namespace word_count
                 else
                     files = new string[] { mode.path };
 
-                List<char> temp_splitor = new List<char>();
-                List<char> temp = new List<char>();
-
                 foreach (string file in files)
                 {
                     process_onefile(mode, file);
                 }
 
                  return 0;
-            //}
-            //catch (ArgumentException e)
-            //{
-            //    Console.WriteLine(e.Message);
-            //    return -1;
-            //}
-        }
+                }
+            catch (ArgumentException e)
+            {
+                Console.WriteLine(e.Message);
+                return -1;
+            }
+}
 
         static void process_onefile(modes mode, string file)
         {
@@ -409,7 +406,7 @@ namespace word_count
                 char_freq[c] = 0;
             }
             StreamReader sr = new StreamReader(infile);
-            int read_size = 1000;
+            int read_size = 10000;
             char[] buffer = new char[read_size];
             while (!sr.EndOfStream)
             {
