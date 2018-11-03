@@ -69,13 +69,39 @@ namespace evaluation
             return freq_dict;
         }
 
+        [System.Runtime.InteropServices.DllImport("Kernel32.dll")]
+        static extern bool QueryPerformanceCounter(ref long count);
+        [System.Runtime.InteropServices.DllImport("Kernel32.dll")]
+        static extern bool QueryPerformanceFrequency(ref long count);
+
         static void Main(string[] args)
         {
             string path = "D:/ASE/word_count/WordFrequency - Reference Implementation/Release/WordFrequencyFSharpFramework.exe";
-            string cmd = "-c D:/ASE/word_count/test_file/pride-and-prejudice.txt";
-            var ta_result = one_process_count_char(path, cmd);
+            string cmd = "-p 3 D:/ASE/word_count/test_file/pride-and-prejudice.txt";
+            int times = 9;
+            long count = 0;
+            long count1 = 0;
+            long freq = 0;
+            double result = 0;
+            QueryPerformanceFrequency(ref freq);
+            QueryPerformanceCounter(ref count);
+            var ta_result = one_process(path, cmd);
+            for (int i = 0; i < times; i ++)
+                ta_result = one_process(path, cmd);
+            QueryPerformanceCounter(ref count1);
+            count = count1 - count;
+            result = (double)(count) / (double)freq;
+            Console.WriteLine("time TA:" + result.ToString());
             path = "D:/ASE/word_count/word_count/word_count/bin/Release/word_count.exe";
-            var my_result = one_process_count_char(path, cmd);
+            QueryPerformanceFrequency(ref freq);
+            QueryPerformanceCounter(ref count);
+            var my_result = one_process(path, cmd);
+            for (int i = 0; i < times; i++)
+                my_result = one_process(path, cmd);
+            QueryPerformanceCounter(ref count1);
+            count = count1 - count;
+            result = (double)(count) / (double)freq;
+            Console.WriteLine("time MY:" + result.ToString());
             List<string> keys = new List<string>();
             string outfile = "D:/ASE/word_count/compare.txt";
             StreamWriter sw = new StreamWriter(outfile);
